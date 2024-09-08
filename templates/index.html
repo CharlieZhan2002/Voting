@@ -1,0 +1,617 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Voting DApp</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0-alpha3/dist/css/bootstrap.min.css" rel="stylesheet">
+    <script src="https://cdn.jsdelivr.net/npm/web3@1.7.0/dist/web3.min.js"></script>
+    <style>
+        body {
+            padding-top: 20px;
+            background-color: #f8f9fa;
+        }
+        .container {
+            max-width: 800px;
+        }
+        .card {
+            margin-bottom: 20px;
+        }
+        .highlight {
+            background-color: #d1ecf1;
+            border-color: #bee5eb;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1 class="text-center">Voting DApp</h1>
+
+        <!-- 注册投票者 -->
+        <div class="card">
+            <div class="card-header">Register Voter</div>
+            <div class="card-body">
+                <form id="registerVoterForm">
+                    <div class="mb-3">
+                        <label for="voterAddress" class="form-label">Voter Address</label>
+                        <input type="text" class="form-control" id="voterAddress" placeholder="Enter voter address">
+                    </div>
+                    <button type="submit" class="btn btn-primary">Register Voter</button>
+                </form>
+            </div>
+        </div>
+
+        <!-- 添加提案 -->
+        <div class="card">
+            <div class="card-header">Add Proposal</div>
+            <div class="card-body">
+                <form id="addProposalForm">
+                    <div class="mb-3">
+                        <label for="proposalDescription" class="form-label">Proposal Description</label>
+                        <input type="text" class="form-control" id="proposalDescription" placeholder="Enter proposal description">
+                    </div>
+                    <button type="submit" class="btn btn-primary">Add Proposal</button>
+                </form>
+            </div>
+        </div>
+
+        <!-- 开始投票 -->
+        <div class="card mt-4">
+            <div class="card-header">Start Voting</div>
+            <div class="card-body">
+                <button id="startVotingButton" class="btn btn-primary">Start Voting</button>
+            </div>
+        </div>
+
+        <!-- 显示提案列表 -->
+        <div class="card">
+            <div class="card-header">Available Proposals</div>
+            <div class="card-body">
+                <ul id="proposalList" class="list-group"></ul>
+                <p id="selectedProposalText" class="mt-2"></p>
+            </div>
+        </div>
+
+        <!-- 投票 -->
+        <div class="card mt-4">
+            <div class="card-header">Voting</div>
+            <div class="card-body">
+                <button id="voteForButton" class="btn btn-success">Vote For</button>
+                <button id="voteAgainstButton" class="btn btn-danger">Vote Against</button>
+            </div>
+        </div>
+
+        <!-- 结算提案 -->
+        <div class="card mt-4">
+            <div class="card-header">Settle Proposal</div>
+            <div class="card-body">
+                <button id="settleProposalButton" class="btn btn-primary">Settle Proposal</button>
+                <p id="proposalResult" class="mt-3"></p>
+            </div>
+        </div>
+
+        <!-- 结束投票 -->
+        <div class="card mt-4">
+            <div class="card-header">End Voting</div>
+            <div class="card-body">
+                <button id="endVotingButton" class="btn btn-warning">End Voting</button>
+            </div>
+        </div>
+
+        <!-- 投票结果列表 -->
+        <div class="card mt-4">
+            <div class="card-header">Voting Results</div>
+            <div class="card-body">
+                <ul id="votingResultsList" class="list-group"></ul>
+            </div>
+        </div>
+
+        <!-- 显示错误消息 -->
+        <div id="errorMessage" style="color: red; margin-top: 10px;"></div>
+
+    </div>
+
+    <script>
+        let web3;
+        let contract;
+        let selectedProposal = null;  // 存储选中的提案ID
+        const contractAddress = '0x4917040CC12Dc158D266a8c5392A959ed044974b';  // 替换为你的合约地址
+        const contractABI = [
+	{
+		"inputs": [
+			{
+				"internalType": "string",
+				"name": "_description",
+				"type": "string"
+			}
+		],
+		"name": "addProposal",
+		"outputs": [],
+		"stateMutability": "nonpayable",
+		"type": "function"
+	},
+	{
+		"inputs": [],
+		"name": "endVoting",
+		"outputs": [],
+		"stateMutability": "nonpayable",
+		"type": "function"
+	},
+	{
+		"inputs": [],
+		"name": "registerVoter",
+		"outputs": [],
+		"stateMutability": "nonpayable",
+		"type": "function"
+	},
+	{
+		"inputs": [],
+		"name": "startVoting",
+		"outputs": [],
+		"stateMutability": "nonpayable",
+		"type": "function"
+	},
+	{
+		"inputs": [],
+		"stateMutability": "nonpayable",
+		"type": "constructor"
+	},
+	{
+		"anonymous": false,
+		"inputs": [
+			{
+				"indexed": false,
+				"internalType": "uint256",
+				"name": "proposalId",
+				"type": "uint256"
+			},
+			{
+				"indexed": false,
+				"internalType": "string",
+				"name": "description",
+				"type": "string"
+			}
+		],
+		"name": "ProposalAdded",
+		"type": "event"
+	},
+	{
+		"inputs": [
+			{
+				"internalType": "uint256",
+				"name": "_proposalId",
+				"type": "uint256"
+			},
+			{
+				"internalType": "bool",
+				"name": "_voteFor",
+				"type": "bool"
+			}
+		],
+		"name": "vote",
+		"outputs": [],
+		"stateMutability": "nonpayable",
+		"type": "function"
+	},
+	{
+		"anonymous": false,
+		"inputs": [
+			{
+				"indexed": false,
+				"internalType": "address",
+				"name": "voter",
+				"type": "address"
+			},
+			{
+				"indexed": false,
+				"internalType": "uint256",
+				"name": "proposalId",
+				"type": "uint256"
+			},
+			{
+				"indexed": false,
+				"internalType": "bool",
+				"name": "voteFor",
+				"type": "bool"
+			}
+		],
+		"name": "VoteCasted",
+		"type": "event"
+	},
+	{
+		"anonymous": false,
+		"inputs": [
+			{
+				"indexed": false,
+				"internalType": "address",
+				"name": "voter",
+				"type": "address"
+			}
+		],
+		"name": "VoterRegistered",
+		"type": "event"
+	},
+	{
+		"anonymous": false,
+		"inputs": [],
+		"name": "VotingEnded",
+		"type": "event"
+	},
+	{
+		"anonymous": false,
+		"inputs": [],
+		"name": "VotingStarted",
+		"type": "event"
+	},
+	{
+		"inputs": [
+			{
+				"internalType": "uint256",
+				"name": "_proposalId",
+				"type": "uint256"
+			}
+		],
+		"name": "getProposal",
+		"outputs": [
+			{
+				"internalType": "uint256",
+				"name": "id",
+				"type": "uint256"
+			},
+			{
+				"internalType": "string",
+				"name": "description",
+				"type": "string"
+			},
+			{
+				"internalType": "uint256",
+				"name": "voteForCount",
+				"type": "uint256"
+			},
+			{
+				"internalType": "uint256",
+				"name": "voteAgainstCount",
+				"type": "uint256"
+			}
+		],
+		"stateMutability": "view",
+		"type": "function"
+	},
+	{
+		"inputs": [],
+		"name": "proposalCount",
+		"outputs": [
+			{
+				"internalType": "uint256",
+				"name": "",
+				"type": "uint256"
+			}
+		],
+		"stateMutability": "view",
+		"type": "function"
+	},
+	{
+		"inputs": [
+			{
+				"internalType": "uint256",
+				"name": "",
+				"type": "uint256"
+			}
+		],
+		"name": "proposals",
+		"outputs": [
+			{
+				"internalType": "uint256",
+				"name": "id",
+				"type": "uint256"
+			},
+			{
+				"internalType": "string",
+				"name": "description",
+				"type": "string"
+			},
+			{
+				"internalType": "uint256",
+				"name": "voteForCount",
+				"type": "uint256"
+			},
+			{
+				"internalType": "uint256",
+				"name": "voteAgainstCount",
+				"type": "uint256"
+			}
+		],
+		"stateMutability": "view",
+		"type": "function"
+	},
+	{
+		"inputs": [
+			{
+				"internalType": "uint256",
+				"name": "_proposalId",
+				"type": "uint256"
+			}
+		],
+		"name": "settleProposal",
+		"outputs": [
+			{
+				"internalType": "string",
+				"name": "result",
+				"type": "string"
+			}
+		],
+		"stateMutability": "view",
+		"type": "function"
+	},
+	{
+		"inputs": [
+			{
+				"internalType": "uint256",
+				"name": "",
+				"type": "uint256"
+			}
+		],
+		"name": "voterAddresses",
+		"outputs": [
+			{
+				"internalType": "address",
+				"name": "",
+				"type": "address"
+			}
+		],
+		"stateMutability": "view",
+		"type": "function"
+	},
+	{
+		"inputs": [
+			{
+				"internalType": "address",
+				"name": "",
+				"type": "address"
+			}
+		],
+		"name": "voters",
+		"outputs": [
+			{
+				"internalType": "bool",
+				"name": "isRegistered",
+				"type": "bool"
+			},
+			{
+				"internalType": "bool",
+				"name": "hasVoted",
+				"type": "bool"
+			},
+			{
+				"internalType": "uint256",
+				"name": "votedProposalId",
+				"type": "uint256"
+			},
+			{
+				"internalType": "bool",
+				"name": "voteFor",
+				"type": "bool"
+			}
+		],
+		"stateMutability": "view",
+		"type": "function"
+	},
+	{
+		"inputs": [],
+		"name": "votingStarted",
+		"outputs": [
+			{
+				"internalType": "bool",
+				"name": "",
+				"type": "bool"
+			}
+		],
+		"stateMutability": "view",
+		"type": "function"
+	}
+];
+
+        window.addEventListener('load', async () => {
+            if (window.ethereum) {
+                web3 = new Web3(window.ethereum);
+                await window.ethereum.request({ method: 'eth_requestAccounts' });  // 请求用户账户
+                contract = new web3.eth.Contract(contractABI, contractAddress);  // 初始化合约
+                loadProposals();  // 加载提案
+            } else {
+                alert('Please install MetaMask to use this DApp!');
+            }
+        });
+
+        // 加载提案
+        async function loadProposals() {
+            try {
+                const proposalCount = await contract.methods.proposalCount().call();
+                const proposalList = document.getElementById('proposalList');
+                proposalList.innerHTML = '';  // 清空之前的内容
+
+                for (let i = 1; i <= proposalCount; i++) {
+                    const proposal = await contract.methods.getProposal(i).call();
+                    const proposalItem = document.createElement('li');
+                    proposalItem.classList.add('list-group-item');
+                    proposalItem.innerText = `ID: ${proposal.id}, Description: ${proposal.description}, For: ${proposal.voteForCount}, Against: ${proposal.voteAgainstCount}`;
+                    proposalItem.setAttribute('data-id', proposal.id);
+                    proposalItem.addEventListener('click', () => selectProposal(proposal.id, proposalItem));
+                    proposalList.appendChild(proposalItem);
+                }
+            } catch (error) {
+                console.error('Error loading proposals:', error);
+            }
+        }
+
+        // 选择提案
+        function selectProposal(proposalId, proposalElement) {
+            selectedProposal = proposalId;
+            document.getElementById('selectedProposalText').innerText = `Selected Proposal ID: ${proposalId}`;
+            
+            // 移除其他提案的选中样式
+            const items = document.querySelectorAll('.list-group-item');
+            items.forEach(item => item.classList.remove('highlight'));
+
+            // 添加当前提案的选中样式
+            proposalElement.classList.add('highlight');
+        }
+
+        // 开始投票
+        document.getElementById('startVotingButton').addEventListener('click', async () => {
+            const accounts = await web3.eth.getAccounts();
+            const account = accounts[0];  // 合约所有者账户
+
+            try {
+                const tx = await contract.methods.startVoting().send({ from: account });
+                alert('Voting started successfully. Transaction Hash: ' + tx.transactionHash);
+            } catch (error) {
+                document.getElementById('errorMessage').innerText = 'Error: ' + error.message;
+            }
+        });
+
+        // 结束投票并显示结果
+        document.getElementById('endVotingButton').addEventListener('click', async () => {
+            const accounts = await web3.eth.getAccounts();
+            const account = accounts[0];  // 合约所有者账户
+
+            try {
+                const tx = await contract.methods.endVoting().send({ from: account });
+                alert('Voting ended successfully. Transaction Hash: ' + tx.transactionHash);
+
+                // 显示结果
+                const proposalCount = await contract.methods.proposalCount().call();
+                const votingResultsList = document.getElementById('votingResultsList');
+                votingResultsList.innerHTML = '';  // 清空之前的内容
+
+                for (let i = 1; i <= proposalCount; i++) {
+                    const proposal = await contract.methods.getProposal(i).call();
+                    const resultText = proposal.voteForCount > proposal.voteAgainstCount
+                        ? `${proposal.description} 提案通过`
+                        : `${proposal.description} 提案未通过`;
+                    const resultItem = document.createElement('li');
+                    resultItem.classList.add('list-group-item');
+                    resultItem.innerText = resultText;
+                    votingResultsList.appendChild(resultItem);
+                }
+            } catch (error) {
+                document.getElementById('errorMessage').innerText = 'Error ending voting: ' + error.message;
+            }
+        });
+
+        // 投赞成票
+        document.getElementById('voteForButton').addEventListener('click', async () => {
+            if
+            (!selectedProposal) {
+                alert('Please select a proposal to vote.');
+                return;
+            }
+
+            const accounts = await web3.eth.getAccounts();
+            const account = accounts[0];
+
+            try {
+                // 检查投票是否已经开始
+                const isVotingStarted = await contract.methods.votingStarted().call();
+                if (!isVotingStarted) {
+                    alert('Voting has not started yet.');
+                    return;
+                }
+
+                // 检查用户是否已经投票
+                const voter = await contract.methods.voters(account).call();
+                if (voter.hasVoted) {
+                    alert('You have already voted.');
+                    return;
+                }
+
+                // 发起赞成票的交易
+                const tx = await contract.methods.vote(selectedProposal, true).send({ from: account });
+                alert('Vote casted successfully. Transaction Hash: ' + tx.transactionHash);
+                loadProposals();  // 投票成功后刷新提案列表
+            } catch (error) {
+                document.getElementById('errorMessage').innerText = 'Error: ' + error.message;
+            }
+        });
+
+        // 投反对票
+        document.getElementById('voteAgainstButton').addEventListener('click', async () => {
+            if (!selectedProposal) {
+                alert('Please select a proposal to vote.');
+                return;
+            }
+
+            const accounts = await web3.eth.getAccounts();
+            const account = accounts[0];
+
+            try {
+                // 检查投票是否已经开始
+                const isVotingStarted = await contract.methods.votingStarted().call();
+                if (!isVotingStarted) {
+                    alert('Voting has not started yet.');
+                    return;
+                }
+
+                // 检查用户是否已经投票
+                const voter = await contract.methods.voters(account).call();
+                if (voter.hasVoted) {
+                    alert('You have already voted.');
+                    return;
+                }
+
+                // 发起反对票的交易
+                const tx = await contract.methods.vote(selectedProposal, false).send({ from: account });
+                alert('Vote casted successfully. Transaction Hash: ' + tx.transactionHash);
+                loadProposals();  // 投票成功后刷新提案列表
+            } catch (error) {
+                document.getElementById('errorMessage').innerText = 'Error: ' + error.message;
+            }
+        });
+
+        // 结算提案
+        document.getElementById('settleProposalButton').addEventListener('click', async () => {
+            if (!selectedProposal) {
+                alert('Please select a proposal to settle.');
+                return;
+            }
+            try {
+                const result = await contract.methods.settleProposal(selectedProposal).call();
+                document.getElementById('proposalResult').innerText = `Proposal Result: ${result}`;
+                loadProposals();  // 结算后刷新提案列表
+            } catch (error) {
+                document.getElementById('errorMessage').innerText = 'Error settling proposal: ' + error.message;
+            }
+        });
+
+        // 注册投票者
+        document.getElementById('registerVoterForm').addEventListener('submit', async (event) => {
+            event.preventDefault();
+            const voterAddress = document.getElementById('voterAddress').value;
+            const accounts = await web3.eth.getAccounts();
+            const account = accounts[0];
+
+            try {
+                const tx = await contract.methods.registerVoter().send({ from: account });
+                alert('Voter registered successfully. Transaction Hash: ' + tx.transactionHash);
+            } catch (error) {
+                document.getElementById('errorMessage').innerText = 'Error: ' + error.message;
+            }
+        });
+
+        // 添加提案
+        document.getElementById('addProposalForm').addEventListener('submit', async (event) => {
+            event.preventDefault();
+            const proposalDescription = document.getElementById('proposalDescription').value;
+            const accounts = await web3.eth.getAccounts();
+            const account = accounts[0];
+
+            try {
+                const tx = await contract.methods.addProposal(proposalDescription).send({ from: account });
+                alert('Proposal added successfully. Transaction Hash: ' + tx.transactionHash);
+                loadProposals();  // 添加提案后刷新提案列表
+            } catch (error) {
+                document.getElementById('errorMessage').innerText = 'Error: ' + error.message;
+            }
+        });
+    </script>
+</body>
+</html>
